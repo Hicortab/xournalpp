@@ -12,6 +12,11 @@
 #include <regex>     // for regex
 #include <utility>   // for move
 
+#include <boost/interprocess/sync/named_mutex.hpp>
+
+namespace bi = boost::interprocess;
+namespace fs = std::filesystem;
+
 #include "control/AudioController.h"                             // for Audi...
 #include "control/ClipboardHandler.h"                            // for Clip...
 #include "control/CompassController.h"                           // for Comp...
@@ -1320,6 +1325,47 @@ void Control::changeColorOfSelection() {
     }
 }
 
+
+std::string Control::getMutexNameByFilePath(const fs::path& filepath) {
+    std::string name = "xournalpp_lock_";
+    std::string path_str = filepath.string();
+    for (char c : path_str) {
+        if (isalnum(c) || c == '_' || c == '-') {
+            name += c;
+        } else {
+            name += '_';
+        }
+    }
+    return name;
+}
+
+void Control::releaseFileLock(const fs::path& filepath) {
+    std::string mutex_name = getMutexNameByFilePath(filepath);
+    try {
+        bi::named_mutex mutex(bi::open_only, mutex_name.c_str());
+        mutex.unlock();
+        bi::named_mutex::remove(mutex_name.c_str());
+    } catch (const bi::interprocess_exception& ex) {  }
+}
+
+bool Control::isFileLocked(const fs::path& filepath) {
+    std::string mutex_name = getMutexNameByFilePath(filepath);
+
+    try {
+        bi::named_mutex mutex(bi::open_or_create, mutex_name.c_str());
+        
+        if (mutex.try_lock()) {
+            return false; 
+        } else {
+            return true; 
+        }
+        
+    } catch (const bi::interprocess_exception& ex) {
+        return true;
+    }
+}
+
+
 void Control::showSettings() {
     // take note of some settings before to compare with after
     struct {
@@ -1459,14 +1505,20 @@ static std::unique_ptr<Document> createNewDocument(Control* ctrl, fs::path filep
         newDoc->setFilepath(std::move(filepath));
     }
     ctrl->addDefaultPage(pageTemplate, newDoc.get());
+    //releaseFileLock(this->doc->getFilepath());
     return newDoc;
 }
 
 void Control::newFile(fs::path filepath) {
+    
+    releaseFileLock(this->doc->getFilepath());
+                    
     this->close(
             [ctrl = this, filepath = std::move(filepath)](bool closed) {
                 if (closed) {
+                    
                     ctrl->replaceDocument(createNewDocument(ctrl, std::move(filepath), std::nullopt), -1);
+                    //releaseFileLock(this->doc->filepath);
                 }
             },
             true);
@@ -1531,6 +1583,13 @@ void Control::openXoppFile(fs::path filepath, int scrollToPage, std::function<vo
     LoadHandler loadHandler;
     std::unique_ptr<Document> doc(loadHandler.loadDocument(filepath));
 
+    if (isFileLocked(filepath)) {
+        string msg = FS(_F("This file is already open by another instance of Xournal++"));
+        XojMsgBox::showErrorToUser(this->getGtkWindow(), msg);
+        callback(false);
+        return;
+    }
+
     if (!doc) {
         string msg = FS(_F("Error opening file \"{1}\"") % filepath.u8string()) + "\n" + loadHandler.getLastError();
         XojMsgBox::showErrorToUser(this->getGtkWindow(), msg);
@@ -1546,6 +1605,8 @@ void Control::openXoppFile(fs::path filepath, int scrollToPage, std::function<vo
     auto afterOpen = [ctrl = this, missingPdf = std::move(missingPdf), doc = std::move(doc), filepath,
                       scrollToPage]() mutable {
         ctrl->replaceDocument(std::move(doc), scrollToPage);
+        
+        //releaseFileLock(this->doc->filepath);
 
         if (missingPdf && (missingPdf->wasPdfAttached || !missingPdf->missingFileName.empty())) {
             // give the user a second chance to select a new PDF filepath, or to discard the PDF
@@ -1578,7 +1639,16 @@ bool Control::openPdfFile(fs::path filepath, bool attachToDocument, int scrollTo
     this->getCursor()->setCursorBusy(true);
     auto doc = std::make_unique<Document>(this);
     bool success = doc->readPdf(filepath, /*initPages=*/true, attachToDocument);
+    
     if (success) {
+
+        if (isFileLocked(filepath)) {
+            string msg = FS(_F("This file is already open by another instance of Xournal++"));
+            XojMsgBox::showErrorToUser(this->getGtkWindow(), msg);
+            //callback(false);
+            return false;
+        }
+
         this->replaceDocument(std::move(doc), scrollToPage);
     } else {
         std::string msg = FS(_F("Error reading PDF file \"{1}\"\n{2}") % filepath.u8string() % doc->getLastErrorMsg());
@@ -1592,6 +1662,8 @@ bool Control::openPngFile(fs::path filepath, bool attachToDocument, int scrollTo
     fs::path imagePath(filepath);
     this->getCursor()->setCursorBusy(true);
     auto doc = std::make_unique<Document>(this);
+
+    releaseFileLock(this->doc->getFilepath());
     this->replaceDocument(createNewDocument(this, std::move(filepath), std::nullopt), -1);
 
     // Put a png file directly in the page
@@ -1624,6 +1696,14 @@ bool Control::openPngFile(fs::path filepath, bool attachToDocument, int scrollTo
     }
 
     this->doc->unlock();
+
+    if (isFileLocked(filepath)) {
+        string msg = FS(_F("This file is already open by another instance of Xournal++"));
+        XojMsgBox::showErrorToUser(this->getGtkWindow(), msg);
+        //callback(false);
+        return false;
+    }
+
     this->getCursor()->setCursorBusy(false);
     return true;
 }
@@ -1634,6 +1714,15 @@ bool Control::openXoptFile(fs::path filepath) {
         // Unable to read the template from the file
         return false;
     }
+
+    if (isFileLocked(filepath)) {
+        string msg = FS(_F("This file is already open by another instance of Xournal++"));
+        XojMsgBox::showErrorToUser(this->getGtkWindow(), msg);
+        //callback(false);
+        return false;
+    }
+
+    releaseFileLock(this->doc->getFilepath());
     this->replaceDocument(createNewDocument(this, std::move(filepath), pageTemplate), -1);
     return true;
 }
@@ -1641,6 +1730,7 @@ bool Control::openXoptFile(fs::path filepath) {
 void Control::openFileWithoutSavingTheCurrentDocument(fs::path filepath, bool attachToDocument, int scrollToPage,
                                                       std::function<void(bool)> callback) {
     if (filepath.empty() || !fs::exists(filepath)) {
+        releaseFileLock(this->doc->getFilepath());
         this->replaceDocument(createNewDocument(this, std::move(filepath), std::nullopt), -1);
         callback(true);
         return;
@@ -2141,6 +2231,7 @@ void Control::closeDocument() {
     // FIXME: there could potentially be a data race if a job requires the old document but runs after it is closed
     this->doc->clearDocument(true);
     this->doc->unlock();
+    Control::isFileLocked(this->doc->getFilepath());
 
     this->undoRedoChanged();
 }

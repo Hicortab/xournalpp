@@ -127,6 +127,10 @@ public:
      */
     void saveAs(std::function<void(bool)> callback = [](bool) {});
 
+    std::string getMutexNameByFilePath(const fs::path& filepath);
+    void releaseFileLock(const fs::path& filepath);
+    bool isFileLocked(const fs::path& filepath);
+
     /**
      * Marks the current document as saved if it is currently marked as unsaved.
      */

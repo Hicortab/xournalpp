@@ -160,6 +160,12 @@ pkg_check_modules(ExternalModules REQUIRED IMPORTED_TARGET ${pkg-module-spec})
 
 find_package(ZLIB REQUIRED)
 find_package(Threads REQUIRED)
+find_package(Boost REQUIRED)
+
+if(Boost_FOUND)
+    list(APPEND CORE_EXTERNAL_MODULES Boost::interprocess)
+    message(STATUS "Found BOOST: ${Boost_VERSION}")
+endif()
 
 option(ENABLE_AUDIO "Compile with Audio recording/playing support" ON)
 if (ENABLE_AUDIO)
