@@ -138,4 +138,6 @@ private:
     // Allow LayerController to modify layers of a page
     // Notifications were be sent
     friend class LayerController;
+    friend class SqliteLoader;
+    
 };

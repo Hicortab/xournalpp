@@ -1529,6 +1529,31 @@ void Control::replaceDocument(std::unique_ptr<Document> doc, int scrollToPage) {
     fileLoaded(scrollToPage);
 }
 
+
+void Control::openXoppjFile(fs::path filepath, int scrollToPage, std::function<void(bool)> callback) {
+    // 1. Crea un nuovo documento VUOTO dove caricare i dati.
+    auto doc = std::make_unique<Document>(this->dHandler.get());
+
+    // 2. Crea il loader e passagli il puntatore al documento vuoto.
+    SqliteLoader loader(doc.get());
+
+    // 3. Carica i dati dal file nel documento.
+    if (!loader.load(filepath.string())) {
+        string msg = FS(_F("Error opening SQLite file \"{1}\"") % filepath.u8string()) + "\n" + loader.getErrorMessage();
+        XojMsgBox::showErrorToUser(this->getGtkWindow(), msg);
+        callback(false);
+        return;
+    }
+
+    auto afterOpen = [ctrl = this, doc = std::move(doc), scrollToPage]() mutable {
+        ctrl->replaceDocument(std::move(doc), scrollToPage);
+    };
+
+    // 5. Esegui l'azione finale e chiama il callback.
+    afterOpen();
+    callback(true);
+}
+
 void Control::openXoppFile(fs::path filepath, int scrollToPage, std::function<void(bool)> callback) {
     LoadHandler loadHandler;
     std::unique_ptr<Document> doc(loadHandler.loadDocument(filepath));
@@ -1684,19 +1709,9 @@ void Control::openFileWithoutSavingTheCurrentDocument(fs::path filepath, bool at
     }
     
     if (filepath.extension() == ".xoppj") {
-        // 1. Create an instance of SqliteLoader, passing it the current document.
-        //    (Assuming your Document object is in a member called 'doc')
-        SqliteLoader loader(this->getDocument()); 
-
-        // 2. Call the 'load' method on the created object.
-        if (loader.load(filepath.string())) {
-            callback(true);
-        } else {
-            // Optional: Handle loading failure
-            std::string errorMsg = loader.getErrorMessage();
-            g_warning("Failed to load SQLite file: %s", errorMsg.c_str());
-            callback(false);
-        }
+        // Chiama la nuova funzione che abbiamo appena definito
+        openXoppjFile(filepath, scrollToPage, callback); 
+        return; // Aggiungi return per non eseguire il codice di openXoppFile dopo
     }
 
 }
