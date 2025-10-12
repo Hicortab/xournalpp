@@ -19,6 +19,7 @@
 #include "model/BackgroundImage.h"  // for BackgroundImage
 #include "model/PageRef.h"          // for PageRef
 #include "util/Color.h"             // for Color
+#include "control/xojfile/AbstractSaveHandler.h" // ✨ Includi il nuovo contratto
 
 #include "filesystem.h"  // for path
 
@@ -31,15 +32,15 @@ class OutputStream;
 class Stroke;
 class XmlAudioNode;
 
-class SaveHandler {
+class SaveHandler : public AbstractSaveHandler {
 public:
     SaveHandler();
 
 public:
-    void prepareSave(const Document* doc, const fs::path& target);
-    void saveTo(const fs::path& filepath, ProgressListener* listener = nullptr);
+    void prepareSave(const Document* doc, const fs::path& target) override;
+    void saveTo(const fs::path& filepath, ProgressListener* listener = nullptr) override;
     void saveTo(OutputStream* out, const fs::path& filepath, ProgressListener* listener = nullptr);
-    const std::string& getErrorMessage();
+    const std::string& getErrorMessage() override;
 
 protected:
     static std::string getColorStr(Color c, unsigned char alpha = 0xff);

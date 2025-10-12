@@ -157,6 +157,25 @@ pkg_check_modules(ExternalModules REQUIRED IMPORTED_TARGET ${pkg-module-spec})
 find_package(ZLIB REQUIRED)
 find_package(Threads REQUIRED)
 
+find_package(SQLite3 REQUIRED)
+
+if(SQLite3_FOUND)
+    message(STATUS "SQLite3 found: ${SQLite3_VERSION}")
+    message(STATUS "SQLite3 include dir: ${SQLite3_INCLUDE_DIRS}")
+    message(STATUS "SQLite3 libraries: ${SQLite3_LIBRARIES}")
+else()
+    message(FATAL_ERROR "SQLite3 not found. Please install libsqlite3-dev")
+endif()
+
+# Trova libzip per compressione .xoppj
+find_package(LibZip REQUIRED)
+
+if(LibZip_FOUND)
+    message(STATUS "LibZip found")
+else()
+    message(FATAL_ERROR "LibZip not found. Please install libzip-dev")
+endif()
+
 option(ENABLE_AUDIO "Compile with Audio recording/playing support" ON)
 if (ENABLE_AUDIO)
     message(STATUS "Enable Audio support")
@@ -236,7 +255,9 @@ target_link_libraries(external_modules INTERFACE
         $<$<TARGET_EXISTS:qpdf::libqpdf>:qpdf::libqpdf>
         ZLIB::ZLIB
         Threads::Threads
-        )
+        SQLite::SQLite3
+        ${LibZip_LIBRARIES}
+    )
 
 target_compile_definitions(external_modules INTERFACE
         GLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_40

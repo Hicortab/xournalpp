@@ -1,25 +1,27 @@
 #include "SaveJob.h"
 
-#include <memory>  // for __shared_ptr_access
+#include <memory>
+#include <glib.h>
 
-#include <cairo.h>  // for cairo_create, cairo_destroy
-#include <glib.h>   // for g_warning, g_error
+#include "control/Control.h"
+#include "control/jobs/BlockingJob.h"
+#include "model/Document.h"
+#include "util/PathUtil.h"
+#include "util/XojMsgBox.h"
+#include "util/i18n.h"
+#include "view/DocumentView.h"
+#include "filesystem.h"
 
-#include "control/Control.h"              // for Control
-#include "control/jobs/BlockingJob.h"     // for BlockingJob
-#include "control/xojfile/SaveHandler.h"  // for SaveHandler
-#include "model/Document.h"               // for Document
-#include "model/PageRef.h"                // for PageRef
-#include "model/PageType.h"               // for PageType
-#include "model/XojPage.h"                // for XojPage
-#include "pdf/base/XojPdfPage.h"          // for XojPdfPageSPtr, XojPdfPage
-#include "util/PathUtil.h"                // for clearExtensions, safeRename...
-#include "util/XojMsgBox.h"               // for XojMsgBox
-#include "util/i18n.h"                    // for FS, _, _F
-#include "view/DocumentView.h"            // for DocumentView
+// Correzione: Includi l'header completo per XojPage
+#include "model/XojPage.h"
+#include "model/PageRef.h"
+#include "pdf/base/XojPdfPage.h"
 
-#include "filesystem.h"  // for path, filesystem_error, remove
-
+// Correzione: Includi tutti i nuovi header necessari
+#include "control/xojfile/AbstractSaveHandler.h"
+#include "control/xojfile/SaveHandler.h"
+#include "control/sqlite/SqliteSaveHandler.h"
+#include "control/sqlite/FileFormat.h"
 
 SaveJob::SaveJob(Control* control, std::function<void(bool)> callback):
         BlockingJob(control, _("Save")), callback(std::move(callback)) {}
@@ -103,46 +105,48 @@ void SaveJob::updatePreview(Control* control) {
 auto SaveJob::save() -> bool {
     updatePreview(control);
     Document* doc = this->control->getDocument();
-    SaveHandler h;
+    
+    fs::path target = doc->getFilepath();
+    
+    std::unique_ptr<AbstractSaveHandler> handler;
+    Util::safeReplaceExtension(target, "xoppj");
+    handler = std::make_unique<SqliteSaveHandler>();
+
+    /*
+        xoj::FileFormat format = xoj::getFormatFromPath(target);
+        if (format == xoj::FileFormat::SQLITE) {
+            Util::safeReplaceExtension(target, "xoppj");
+            handler = std::make_unique<SqliteSaveHandler>();
+        } else {
+            Util::safeReplaceExtension(target, "xopp");
+            handler = std::make_unique<SaveHandler>();
+        }
+    */
 
     doc->lock();
-    fs::path target = doc->getFilepath();
-    Util::safeReplaceExtension(target, "xopp");
-
-    h.prepareSave(doc, target);
+    handler->prepareSave(doc, target);
     doc->unlock();
 
     auto const createBackup = doc->shouldCreateBackupOnSave();
-
     if (createBackup) {
         try {
-            // Note: The backup must be created for the target as this is the filepath
-            // which will be written to. Do not use the `filepath` variable!
             Util::safeRenameFile(target, fs::path{target} += "~");
         } catch (const fs::filesystem_error& fe) {
-            g_warning("Could not create backup! Failed with %s", fe.what());
             this->lastError = FS(_F("Save file error, can't backup: {1}") % std::string(fe.what()));
-            if (!control->getWindow()) {
-                g_error("%s", this->lastError.c_str());
-            }
             return false;
         }
     }
 
     doc->lock();
-    h.saveTo(target, this->control);
+    handler->saveTo(target, this->control);
     doc->setFilepath(target);
     doc->unlock();
 
-    if (!h.getErrorMessage().empty()) {
-        this->lastError = FS(_F("Save file error: {1}") % h.getErrorMessage());
-        if (!control->getWindow()) {
-            g_error("%s", this->lastError.c_str());
-        }
+    if (!handler->getErrorMessage().empty()) {
+        this->lastError = FS(_F("Save file error: {1}") % handler->getErrorMessage());
         return false;
     } else if (createBackup) {
         try {
-            // If a backup was created it can be removed now since no error occured during the save
             fs::remove(fs::path{target} += "~");
         } catch (const fs::filesystem_error& fe) {
             g_warning("Could not delete backup! Failed with %s", fe.what());

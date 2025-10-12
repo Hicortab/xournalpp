@@ -117,6 +117,8 @@
 #include "config-dev.h"                      // for SETT...
 #include "config.h"                          // for PROJ...
 
+#include "control/sqlite/SqliteLoader.h"  // for .xoppj file format
+
 using std::string;
 
 Control::Control(GApplication* gtkApp, GladeSearchpath* gladeSearchPath, bool disableAudio): gtkApp(gtkApp) {
@@ -1675,7 +1677,28 @@ void Control::openFileWithoutSavingTheCurrentDocument(fs::path filepath, bool at
         return;
     }
 
-    this->openXoppFile(std::move(filepath), scrollToPage, std::move(callback));
+    if ( filepath.extension() == ".xopp" ) {
+        this->openXoppFile(std::move(filepath), scrollToPage, std::move(callback));
+        callback(true);
+        return;
+    }
+    
+    if (filepath.extension() == ".xoppj") {
+        // 1. Create an instance of SqliteLoader, passing it the current document.
+        //    (Assuming your Document object is in a member called 'doc')
+        SqliteLoader loader(this->getDocument()); 
+
+        // 2. Call the 'load' method on the created object.
+        if (loader.load(filepath.string())) {
+            callback(true);
+        } else {
+            // Optional: Handle loading failure
+            std::string errorMsg = loader.getErrorMessage();
+            g_warning("Failed to load SQLite file: %s", errorMsg.c_str());
+            callback(false);
+        }
+    }
+
 }
 
 void Control::openFile(fs::path filepath, std::function<void(bool)> callback, int scrollToPage, bool forceOpen) {

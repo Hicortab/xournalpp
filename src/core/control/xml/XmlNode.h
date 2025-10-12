@@ -40,6 +40,18 @@ public:
 
     void addChild(XmlNode* node);
 
+    void markDirty();
+    
+    void clearDirty();
+    
+    bool getDirty();
+
+    void markDirtyRecursive();
+    
+    void setDatabaseId(int64_t id);
+    
+    int64_t getDatabaseId();
+
 protected:
     void putAttrib(XMLAttribute* a);
     void writeAttributes(OutputStream* out);
@@ -49,4 +61,7 @@ protected:
     std::vector<std::unique_ptr<XMLAttribute>> attributes{};
 
     std::string tag;
+private:
+    bool isDirty = false;
+    int64_t databaseId = -1; 
 };
