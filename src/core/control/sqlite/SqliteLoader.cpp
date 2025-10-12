@@ -1,13 +1,17 @@
 #include "control/sqlite/SqliteLoader.h"
 
+// Aggiunti per la gestione dei tipi di pagina e dei PDF
+#include "control/pagetype/PageTypeHandler.h"
+#include "model/BackgroundImage.h"
 #include "model/Document.h"
-#include "model/Layer.h"
-#include "model/Stroke.h"
-#include "model/Text.h"
-#include "model/Image.h"
-#include "model/TexImage.h"
-#include "model/XojPage.h"
 #include "model/Font.h"
+#include "model/Image.h"
+#include "model/Layer.h"
+#include "model/PageType.h"
+#include "model/Stroke.h"
+#include "model/TexImage.h"
+#include "model/Text.h"
+#include "model/XojPage.h"
 #include "util/Color.h"
 
 SqliteLoader::SqliteLoader(Document* doc) : document(doc) {}
@@ -24,7 +28,7 @@ void SqliteLoader::closeDatabase() {
 }
 
 auto SqliteLoader::openDatabase(const std::string& dbPath) -> bool {
-    if (sqlite3_open(dbPath.c_str(), &db) != SQLITE_OK) {
+    if (sqlite3_open_v2(dbPath.c_str(), &db, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
         errorMessage = "Cannot open database: " + std::string(sqlite3_errmsg(db));
         closeDatabase();
         return false;
@@ -37,7 +41,7 @@ auto SqliteLoader::load(const std::string& path) -> bool {
         return false;
     }
 
-    if (sqlite3_exec(db, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr) != SQLITE_OK) {
+    if (sqlite3_exec(db, "BEGIN DEFERRED TRANSACTION;", nullptr, nullptr, nullptr) != SQLITE_OK) {
         errorMessage = "Failed to begin transaction";
         closeDatabase();
         return false;
@@ -62,21 +66,53 @@ auto SqliteLoader::load(const std::string& path) -> bool {
 
 auto SqliteLoader::loadPages() -> bool {
     sqlite3_stmt* stmt = nullptr;
-    // Seleziona i nodi di tipo 'page' e uniscili con i loro attributi nella tabella 'pages'
-    const char* sql = "SELECT n.id, p.width, p.height FROM nodes n JOIN pages p ON n.id = p.node_id WHERE n.node_type = 'page' ORDER BY n.position;";
+    const char* sql = "SELECT n.id, p.width, p.height, p.background_type, p.background_color, p.background_pdf_page, p.background_pdf_filename FROM nodes n JOIN pages p ON n.id = p.node_id WHERE n.node_type = 'PAGE' AND n.parent_id IS NULL ORDER BY n.position;";
 
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        errorMessage = "Failed to prepare statement for loading pages";
+        errorMessage = "Failed to prepare statement for loading pages: " + std::string(sqlite3_errmsg(db));
         return false;
     }
 
+    bool pdfParsed = false;
     while (sqlite3_step(stmt) == SQLITE_ROW) {
-        int nodeId = sqlite3_column_int(stmt, 0);
+        int pageNodeId = sqlite3_column_int(stmt, 0);
         double width = sqlite3_column_double(stmt, 1);
         double height = sqlite3_column_double(stmt, 2);
 
         auto page = std::make_unique<XojPage>(width, height);
-        if (!loadLayers(page.get(), nodeId)) { // Passa il nodeId della pagina
+
+        // Carica le informazioni sullo sfondo
+        const char* bgTypeStr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3));
+        if (bgTypeStr) {
+            PageType bgType;
+            bgType.format = PageTypeHandler::getPageTypeFormatForString(bgTypeStr);
+            page->setBackgroundType(bgType);
+
+            /*
+            
+                TODO xopj
+
+            if (bgType.format == PageTypeFormat::Pdf && !pdfParsed) {
+                const char* pdfFilename = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 6));
+                if (pdfFilename) {
+                    // Imposta le informazioni del PDF sul documento.
+                    // Nota: qui si assume che il PDF non sia allegato ma un file esterno.
+                    // La logica per i PDF allegati andrebbe gestita qui.
+                    document->setPdfPath(fs::path(pdfFilename));
+                    pdfParsed = true; // Per evitare di ricaricare lo stesso PDF per ogni pagina
+                }
+            }*/
+        }
+
+        int bgColorInt = sqlite3_column_int(stmt, 4);
+        page->setBackgroundColor(Color(static_cast<uint32_t>(bgColorInt)));
+
+        int pdfPageNum = sqlite3_column_int(stmt, 5);
+        if (pdfPageNum > 0) {
+            page->setBackgroundPdfPageNr(pdfPageNum - 1);
+        }
+
+        if (!loadLayers(page.get(), pageNodeId)) {
             sqlite3_finalize(stmt);
             return false;
         }
@@ -87,13 +123,13 @@ auto SqliteLoader::loadPages() -> bool {
     return true;
 }
 
+
 auto SqliteLoader::loadLayers(XojPage* page, int pageNodeId) -> bool {
     sqlite3_stmt* stmt = nullptr;
-    // Seleziona i nodi 'layer' figli della pagina corrente
-    const char* sql = "SELECT n.id FROM nodes n WHERE n.node_type = 'layer' AND n.parent_id = ? ORDER BY n.position;";
+    const char* sql = "SELECT n.id FROM nodes n WHERE n.node_type = 'LAYER' AND n.parent_id = ? ORDER BY n.position;";
 
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        errorMessage = "Failed to prepare statement for loading layers";
+        errorMessage = "Failed to prepare statement for loading layers: " + std::string(sqlite3_errmsg(db));
         return false;
     }
 
@@ -118,10 +154,10 @@ auto SqliteLoader::loadLayers(XojPage* page, int pageNodeId) -> bool {
 
 auto SqliteLoader::loadStrokes(Layer* layer, int layerNodeId) -> bool {
     sqlite3_stmt* stmt = nullptr;
-    const char* sql = "SELECT s.tool_type, s.color, s.width, s.coordinates, s.pressure_data FROM nodes n JOIN strokes s ON n.id = s.node_id WHERE n.node_type = 'stroke' AND n.parent_id = ? ORDER BY n.position;";
+    const char* sql = "SELECT s.tool_type, s.color, s.width, s.coordinates, s.pressure_data FROM nodes n JOIN strokes s ON n.id = s.node_id WHERE n.node_type = 'STROKE' AND n.parent_id = ? ORDER BY n.position;";
 
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        errorMessage = "Failed to prepare statement for loading strokes";
+        errorMessage = "Failed to prepare statement for loading strokes: " + std::string(sqlite3_errmsg(db));
         return false;
     }
 
@@ -140,12 +176,14 @@ auto SqliteLoader::loadStrokes(Layer* layer, int layerNodeId) -> bool {
         stroke->setColor(Color(static_cast<uint32_t>(colorInt)));
         stroke->setWidth(width);
         
-        if (strcmp(reinterpret_cast<const char*>(toolStr), "eraser") == 0) {
-            stroke->setToolType(StrokeTool::ERASER);
-        } else if (strcmp(reinterpret_cast<const char*>(toolStr), "highlighter") == 0) {
-            stroke->setToolType(StrokeTool::HIGHLIGHTER);
-        } else {
-            stroke->setToolType(StrokeTool::PEN);
+        if (toolStr) {
+            if (strcmp(reinterpret_cast<const char*>(toolStr), "eraser") == 0) {
+                stroke->setToolType(StrokeTool::ERASER);
+            } else if (strcmp(reinterpret_cast<const char*>(toolStr), "highlighter") == 0) {
+                stroke->setToolType(StrokeTool::HIGHLIGHTER);
+            } else {
+                stroke->setToolType(StrokeTool::PEN);
+            }
         }
 
         const auto* points = static_cast<const Point*>(coordsData);
@@ -170,13 +208,13 @@ auto SqliteLoader::loadStrokes(Layer* layer, int layerNodeId) -> bool {
 
 auto SqliteLoader::loadTexts(Layer* layer, int layerNodeId) -> bool {
     sqlite3_stmt* stmt = nullptr;
-    const char* sql = "SELECT t.content, t.font_name, t.font_size, t.color, t.x, t.y FROM nodes n JOIN texts t ON n.id = t.node_id WHERE n.node_type = 'text' AND n.parent_id = ? ORDER BY n.position;";
+    const char* sql = "SELECT t.content, t.font_name, t.font_size, t.color, t.x, t.y FROM nodes n JOIN texts t ON n.id = t.node_id WHERE n.node_type = 'TEXT' AND n.parent_id = ? ORDER BY n.position;";
 
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        errorMessage = "Failed to prepare statement for loading texts";
+        errorMessage = "Failed to prepare statement for loading texts: " + std::string(sqlite3_errmsg(db));
         return false;
     }
-
+    
     sqlite3_bind_int(stmt, 1, layerNodeId);
 
     while (sqlite3_step(stmt) == SQLITE_ROW) {
@@ -188,13 +226,13 @@ auto SqliteLoader::loadTexts(Layer* layer, int layerNodeId) -> bool {
         double y = sqlite3_column_double(stmt, 5);
 
         auto text = std::make_unique<Text>();
-        text->setText((const char*)content);
+        text->setText(reinterpret_cast<const char*>(content));
         text->setColor(Color(static_cast<uint32_t>(colorInt)));
         text->setX(x);
         text->setY(y);
 
         XojFont& font = text->getFont();
-        font.setName((const char*)fontName);
+        font.setName(reinterpret_cast<const char*>(fontName));
         font.setSize(fontSize);
         
         layer->addElement(std::move(text));
@@ -205,74 +243,11 @@ auto SqliteLoader::loadTexts(Layer* layer, int layerNodeId) -> bool {
 }
 
 auto SqliteLoader::loadImages(Layer* layer, int layerNodeId) -> bool {
-    sqlite3_stmt* stmt = nullptr;
-    // NOTA: Questa query assume che i dati dell'immagine siano ancora in un BLOB.
-    // Per usare media_path, dovresti fare un'altra query alla tabella media_files.
-    const char* sql = "SELECT i.x, i.y, i.width, i.height, m.path FROM nodes n JOIN images i ON n.id = i.node_id JOIN media_files m ON i.media_path = m.path WHERE n.node_type = 'image' AND n.parent_id = ? ORDER BY n.position;";
-
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        errorMessage = "Failed to prepare statement for loading images";
-        return false;
-    }
-
-    sqlite3_bind_int(stmt, 1, layerNodeId);
-
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        double x = sqlite3_column_double(stmt, 0);
-        double y = sqlite3_column_double(stmt, 1);
-        double width = sqlite3_column_double(stmt, 2);
-        double height = sqlite3_column_double(stmt, 3);
-        // const void* data = sqlite3_column_blob(stmt, 4); // Esempio se si usasse un BLOB
-        // int dataSize = sqlite3_column_bytes(stmt, 4);
-
-        auto image = std::make_unique<Image>();
-        // image->setImage(std::string(static_cast<const char*>(data), dataSize));
-        image->setX(x);
-        image->setY(y);
-        image->setWidth(width);
-        image->setHeight(height);
-        
-        // Qui dovresti caricare l'immagine dal percorso specificato in media_path
-        // Per ora, lasciamo l'immagine vuota
-
-        layer->addElement(std::move(image));
-    }
-
-    sqlite3_finalize(stmt);
+    // Questa funzione andrebbe implementata per caricare i dati da media_files
     return true;
 }
 
 auto SqliteLoader::loadTexImages(Layer* layer, int layerNodeId) -> bool {
-    sqlite3_stmt* stmt = nullptr;
-    const char* sql = "SELECT t.tex_source, t.x, t.y, t.width, t.height FROM nodes n JOIN tex_images t ON n.id = t.node_id WHERE n.node_type = 'teximage' AND n.parent_id = ? ORDER BY n.position;";
-
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        errorMessage = "Failed to prepare statement for loading TeX images";
-        return false;
-    }
-
-    sqlite3_bind_int(stmt, 1, layerNodeId);
-
-    while (sqlite3_step(stmt) == SQLITE_ROW) {
-        const unsigned char* text = sqlite3_column_text(stmt, 0);
-        double x = sqlite3_column_double(stmt, 1);
-        double y = sqlite3_column_double(stmt, 2);
-        double width = sqlite3_column_double(stmt, 3);
-        double height = sqlite3_column_double(stmt, 4);
-        
-        auto texImage = std::make_unique<TexImage>();
-        texImage->setText((const char*)text);
-        texImage->setX(x);
-        texImage->setY(y);
-        texImage->setWidth(width);
-        texImage->setHeight(height);
-        
-        // Anche qui, i dati dell'immagine renderizzata dovrebbero essere caricati
-        // dal percorso in media_path.
-
-        layer->addElement(std::move(texImage));
-    }
-
-    sqlite3_finalize(stmt);
+    // Questa funzione andrebbe implementata per caricare i dati da media_files
     return true;
 }

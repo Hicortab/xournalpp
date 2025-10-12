@@ -18,7 +18,7 @@ public:
     SqliteStroke& operator=(SqliteStroke&&) = delete;
 
     auto load(int64_t nodeId) -> bool;
-    auto save(int64_t nodeId) -> bool;
+    auto save(int parentNodeId) -> bool;
 
     [[nodiscard]] auto getErrorMessage() const -> std::string;
 

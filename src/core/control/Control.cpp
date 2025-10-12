@@ -1532,7 +1532,9 @@ void Control::replaceDocument(std::unique_ptr<Document> doc, int scrollToPage) {
 
 void Control::openXoppjFile(fs::path filepath, int scrollToPage, std::function<void(bool)> callback) {
     // 1. Crea un nuovo documento VUOTO dove caricare i dati.
-    auto doc = std::make_unique<Document>(this->dHandler.get());
+
+    DocumentHandler dHanlder;
+    auto doc = std::make_unique<Document>(&dHanlder);
 
     // 2. Crea il loader e passagli il puntatore al documento vuoto.
     SqliteLoader loader(doc.get());

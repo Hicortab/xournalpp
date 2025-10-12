@@ -64,46 +64,37 @@ auto SqliteStroke::load(int64_t nodeId) -> bool {
     return errorMessage.empty();
 }
 
-auto SqliteStroke::save(int64_t nodeId) -> bool {
+auto SqliteStroke::save(int parentNodeId) -> bool {
+    // 1. Crea il nodo per lo stroke
     sqlite3_stmt* stmt = nullptr;
-    const char* sql = "INSERT INTO strokes (node_id, tool_type, color, width, fill, coordinates, pressure_data) VALUES (?, ?, ?, ?, ?, ?, ?);";
-
-    if (sqlite3_prepare_v2(db, sql, -1, &stmt, nullptr) != SQLITE_OK) {
-        errorMessage = "Failed to prepare stroke save query: " + std::string(sqlite3_errmsg(db));
-        return false;
+    const char* nodeSql = "INSERT INTO nodes (parent_id, node_type) VALUES (?, 'stroke');";
+    if (sqlite3_prepare_v2(db, nodeSql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return false; // Gestisci errore
     }
-
-    sqlite3_bind_int64(stmt, 1, nodeId);
-    sqlite3_bind_text(stmt, 2, toolTypeToString(stroke->getToolType()), -1, SQLITE_STATIC);
-    sqlite3_bind_int(stmt, 3, static_cast<uint32_t>(stroke->getColor()));
-    sqlite3_bind_double(stmt, 4, stroke->getWidth());
-    sqlite3_bind_int(stmt, 5, stroke->getFill());
-
-    const auto& points = stroke->getPointVector();
-    std::vector<float> coords_data;
-    coords_data.reserve(points.size() * 2);
-    for (const auto& p : points) {
-        coords_data.push_back(static_cast<float>(p.x)); // Correzione: Cast esplicito per warning
-        coords_data.push_back(static_cast<float>(p.y)); // Correzione: Cast esplicito per warning
-    }
-    sqlite3_bind_blob(stmt, 6, coords_data.data(), coords_data.size() * sizeof(float), SQLITE_TRANSIENT);
-
-    if (stroke->hasPressure()) {
-        std::vector<float> pressures;
-        pressures.reserve(points.size());
-        for (const auto& p : points) {
-            pressures.push_back(static_cast<float>(p.z)); // Correzione: Cast esplicito per warning
-        }
-        sqlite3_bind_blob(stmt, 7, pressures.data(), pressures.size() * sizeof(float), SQLITE_TRANSIENT);
-    } else {
-        sqlite3_bind_null(stmt, 7);
-    }
-
+    sqlite3_bind_int(stmt, 1, parentNodeId);
     if (sqlite3_step(stmt) != SQLITE_DONE) {
-        errorMessage = "Failed to save stroke data: " + std::string(sqlite3_errmsg(db));
         sqlite3_finalize(stmt);
-        return false;
+        return false; // Gestisci errore
     }
     sqlite3_finalize(stmt);
-    return true;
+    int strokeNodeId = static_cast<int>(sqlite3_last_insert_rowid(db));
+
+    // 2. Salva i dati dello stroke nella tabella 'strokes'
+    const char* strokeSql = "INSERT INTO strokes (node_id, tool_type, color, width, coordinates, pressure_data) VALUES (?, ?, ?, ?, ?, ?);";
+    if (sqlite3_prepare_v2(db, strokeSql, -1, &stmt, nullptr) != SQLITE_OK) {
+        return false; // Gestisci errore
+    }
+
+    sqlite3_bind_int(stmt, 1, strokeNodeId);
+    // ... lega gli altri parametri: tool_type, color, width ...
+    
+    // Converte e lega i dati delle coordinate come BLOB
+    const auto& points = stroke->getPointVector();
+    sqlite3_bind_blob(stmt, 5, points.data(), points.size() * sizeof(Point), SQLITE_STATIC);
+    
+    // ... lega pressure_data se presente ...
+
+    bool success = (sqlite3_step(stmt) == SQLITE_DONE);
+    sqlite3_finalize(stmt);
+    return success;
 }

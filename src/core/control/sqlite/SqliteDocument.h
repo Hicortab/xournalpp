@@ -1,34 +1,29 @@
-// src/core/control/sqlite/SqliteDocument.h
 #pragma once
 
-#include <string>
-#include <optional>
-#include <cstdint>
 #include "sqlite3.h"
+#include <memory>
+#include <string>
 
+// Forward declarations
 class Document;
-class Element;
+class XojPage; // Corretto: usa XojPage
+class Layer;
+class Stroke;
+class Text;
 
 class SqliteDocument {
 public:
     SqliteDocument(sqlite3* db, Document* doc);
-    ~SqliteDocument() = default;
-
-    auto load() -> bool;
     auto save() -> bool;
-
     [[nodiscard]] auto getErrorMessage() const -> std::string;
 
 private:
-    auto loadMetadata() -> bool;
-    auto saveMetadata() -> bool;
-    
-    auto loadNodeHierarchy() -> bool;
-    auto saveNodeHierarchy() -> bool;
+    auto savePage(XojPage* page, int parentNodeId) -> bool; // Corretto: usa XojPage
+    auto saveLayer(Layer* layer, int parentNodeId) -> bool;
+    auto saveStroke(Stroke* stroke, int parentNodeId) -> bool;
+    auto saveText(Text* text, int parentNodeId) -> bool;
 
-    // Correzione: Aggiunte dichiarazioni mancanti
-    auto saveNodeRecursive(Element* element, std::optional<int64_t> parentId, int position) -> bool;
-    auto loadNodeRecursive(int64_t nodeId) -> Element*;
+    auto createNode(int parentNodeId, const std::string& nodeType) -> int;
 
 private:
     sqlite3* db;
