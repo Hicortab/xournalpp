@@ -1531,27 +1531,21 @@ void Control::replaceDocument(std::unique_ptr<Document> doc, int scrollToPage) {
 
 
 void Control::openXoppjFile(fs::path filepath, int scrollToPage, std::function<void(bool)> callback) {
-    // 1. Crea un nuovo documento VUOTO dove caricare i dati.
-
-    DocumentHandler dHanlder;
-    auto doc = std::make_unique<Document>(&dHanlder);
-
-    // 2. Crea il loader e passagli il puntatore al documento vuoto.
-    SqliteLoader loader(doc.get());
-
-    // 3. Carica i dati dal file nel documento.
-    if (!loader.load(filepath.string())) {
-        string msg = FS(_F("Error opening SQLite file \"{1}\"") % filepath.u8string()) + "\n" + loader.getErrorMessage();
-        XojMsgBox::showErrorToUser(this->getGtkWindow(), msg);
+    
+    SqliteLoader loader;
+    std::unique_ptr<Document> doc(loader.load(filepath));
+    
+    if (!doc) {
+        //string msg = FS(_F("Error opening file \"{1}\"") % filepath.u8string()) + "\n" + loadHandler.getLastError();
+        //XojMsgBox::showErrorToUser(this->getGtkWindow(), msg);
         callback(false);
         return;
     }
 
-    auto afterOpen = [ctrl = this, doc = std::move(doc), scrollToPage]() mutable {
+    auto afterOpen = [ctrl = this, doc = std::move(doc), filepath, scrollToPage]() mutable {
         ctrl->replaceDocument(std::move(doc), scrollToPage);
     };
-
-    // 5. Esegui l'azione finale e chiama il callback.
+    
     afterOpen();
     callback(true);
 }
@@ -1712,7 +1706,8 @@ void Control::openFileWithoutSavingTheCurrentDocument(fs::path filepath, bool at
     
     if (filepath.extension() == ".xoppj") {
         // Chiama la nuova funzione che abbiamo appena definito
-        openXoppjFile(filepath, scrollToPage, callback); 
+        openXoppjFile(std::move(filepath), scrollToPage, callback); 
+        callback(true);
         return; // Aggiungi return per non eseguire il codice di openXoppFile dopo
     }
 

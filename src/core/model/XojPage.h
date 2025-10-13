@@ -52,6 +52,9 @@ public:
      */
     void setSize(double width, double height);
 
+    int getNodeId() const { return nodeId; }
+    void setNodeId(int id) { this->nodeId = id; }
+
     double getWidth() const;
     double getHeight() const;
 
@@ -101,6 +104,8 @@ private:
      * The layer list
      */
     std::vector<Layer*> layer;
+
+    int nodeId = -1;
 
     /**
      * The current selected layer ID

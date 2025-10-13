@@ -42,6 +42,14 @@ protected:
 
 public:
     ~Element() override = default;
+    
+    [[nodiscard]] auto getNodeId() const -> int { return db_nodeId; }
+
+    /**
+     * @brief Imposta l'ID del nodo del database per questo elemento.
+     * @param nodeId L'ID assegnato dal database.
+     */
+    void setNodeId(int nodeId) { db_nodeId = nodeId; }
 
     using Index = std::ptrdiff_t;
     static constexpr auto InvalidIndex = static_cast<Index>(-1);
@@ -114,6 +122,8 @@ private:
      * The color in RGB format
      */
     Color color{0U};
+
+    int db_nodeId = -1;
 };
 
 namespace xoj {

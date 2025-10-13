@@ -4,6 +4,11 @@
 #include <string>
 
 #include "sqlite3.h"
+#include "model/DocumentHandler.h"
+#include "model/Document.h"
+#include "filesystem.h"
+
+namespace fs = std::filesystem;
 
 class Document;
 class XojPage;
@@ -11,13 +16,13 @@ class Layer;
 
 class SqliteLoader {
 public:
-    explicit SqliteLoader(Document* doc);
+    explicit SqliteLoader();
     ~SqliteLoader();
 
     SqliteLoader(const SqliteLoader&) = delete;
     SqliteLoader& operator=(const SqliteLoader&) = delete;
 
-    auto load(const std::string& path) -> bool;
+    std::unique_ptr<Document> load(const fs::path& path);
     [[nodiscard]] auto getErrorMessage() const -> std::string;
 
 private:
@@ -31,8 +36,11 @@ private:
     auto loadImages(Layer* layer, int layerId) -> bool;
     auto loadTexImages(Layer* layer, int layerId) -> bool;
 
-private:
+public:
     sqlite3* db = nullptr;
-    Document* document;
+    
+    DocumentHandler sqliteLoaderDocumentHandler;
+    std::unique_ptr<Document> document;
+
     std::string errorMessage;
 };

@@ -7,17 +7,6 @@ namespace xoj {
 namespace sqlite {
 
 /**
- * Versione del formato database
- * Incrementa quando cambi lo schema
- */
-constexpr int SCHEMA_VERSION = 1;
-
-/**
- * Nome del file database all'interno del .xoppj
- */
-constexpr const char* DB_FILENAME = "document.sqlite3";
-
-/**
  * Schema completo del database
  * Definito come costante per creazione iniziale
  */
@@ -39,7 +28,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     parent_id INTEGER REFERENCES nodes(id) ON DELETE CASCADE,
     node_type TEXT NOT NULL,
-    position INTEGER NOT NULL DEFAULT 0,
+    position INTEGER NOT NULL,
     created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
     modified_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
     is_dirty INTEGER DEFAULT 0,
@@ -158,6 +147,21 @@ CREATE TABLE IF NOT EXISTS change_history (
 
 CREATE INDEX IF NOT EXISTS idx_history_node ON change_history(node_id);
 CREATE INDEX IF NOT EXISTS idx_history_time ON change_history(timestamp);
+
+-- NUOVO TRIGGER per gestire 'position' automaticamente
+CREATE TRIGGER IF NOT EXISTS set_node_position
+AFTER INSERT ON nodes
+FOR EACH ROW
+WHEN NEW.position IS NULL OR NEW.position = 0 -- Si attiva solo se la posizione non è specificata
+BEGIN
+    UPDATE nodes
+    SET position = (
+        SELECT IFNULL(MAX(position), -1) + 1
+        FROM nodes
+        WHERE parent_id = NEW.parent_id
+    )
+    WHERE id = NEW.id;
+END;
 
 -- Trigger per aggiornare modified_at automaticamente
 CREATE TRIGGER IF NOT EXISTS update_node_modified

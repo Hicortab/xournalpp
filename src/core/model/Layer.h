@@ -40,6 +40,14 @@ public:
      */
     void addElement(ElementPtr e);
 
+    [[nodiscard]] auto getNodeId() const -> int { return db_nodeId; }
+
+    /**
+     * @brief Imposta l'ID del nodo del database per questo layer.
+     * @param nodeId L'ID assegnato dal database.
+     */
+    void setNodeId(int nodeId) { db_nodeId = nodeId; }
+
     /**
      * Inserts an Element in the specified position of the Layer%s internal list
      *
@@ -123,4 +131,6 @@ private:
     bool visible = true;
 
     std::optional<std::string> name;
+
+    int db_nodeId = -1;
 };
