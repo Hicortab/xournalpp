@@ -1689,8 +1689,38 @@ void Control::openFileWithoutSavingTheCurrentDocument(fs::path filepath, bool at
         return;
     }
 
-    this->openXoppFile(std::move(filepath), scrollToPage, std::move(callback));
+    //this->openXoppFile(std::move(filepath), scrollToPage, std::move(callback));
+
+    /*
+    if (filepath.extension() == ".xoppj") {
+        // Chiama la nuova funzione che abbiamo appena definito
+        openXoppjFile(std::move(filepath), scrollToPage, callback); 
+        callback(true);
+        return; // Aggiungi return per non eseguire il codice di openXoppFile dopo
+    }
+    */
 }
+/*
+void Control::openXoppjFile(fs::path filepath, int scrollToPage, std::function<void(bool)> callback) {
+    
+    SqliteLoader loader;
+    std::unique_ptr<Document> doc(loader.load(filepath));
+    
+    if (!doc) {
+        //string msg = FS(_F("Error opening file \"{1}\"") % filepath.u8string()) + "\n" + loadHandler.getLastError();
+        //XojMsgBox::showErrorToUser(this->getGtkWindow(), msg);
+        callback(false);
+        return;
+    }
+
+    auto afterOpen = [ctrl = this, doc = std::move(doc), filepath, scrollToPage]() mutable {
+        ctrl->replaceDocument(std::move(doc), scrollToPage);
+    };
+    
+    afterOpen();
+    callback(true);
+}
+*/
 
 void Control::openFile(fs::path filepath, std::function<void(bool)> callback, int scrollToPage, bool forceOpen) {
     if (filepath.empty() || (!forceOpen && !shouldFileOpen(filepath, getGtkWindow()))) {

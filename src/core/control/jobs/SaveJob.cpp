@@ -18,6 +18,8 @@
 #include "util/i18n.h"                    // for FS, _, _F
 #include "view/DocumentView.h"            // for DocumentView
 
+#include "control/new_xopp/SqliteSaveHandler.h" // for SqliteSaveHandler
+
 #include "filesystem.h"  // for path, filesystem_error, remove
 
 
@@ -103,13 +105,17 @@ void SaveJob::updatePreview(Control* control) {
 auto SaveJob::save() -> bool {
     updatePreview(control);
     Document* doc = this->control->getDocument();
-    SaveHandler h;
+    //SaveHandler h;
 
     doc->lock();
     fs::path target = doc->getFilepath();
-    Util::safeReplaceExtension(target, "xopp");
+    Util::safeReplaceExtension(target, "xoppj");
 
-    h.prepareSave(doc, target);
+    handler = std::make_unique<SqliteSaveHandler>()
+    
+    handler->prepareToSave(doc, target);
+
+    //h.prepareSave(doc, target);
     doc->unlock();
 
     auto const createBackup = doc->shouldCreateBackupOnSave();
@@ -130,11 +136,11 @@ auto SaveJob::save() -> bool {
     }
 
     doc->lock();
-    h.saveTo(target, this->control);
+    handler.saveTo(target, this->control);
     doc->setFilepath(target);
     doc->unlock();
 
-    if (!h.getErrorMessage().empty()) {
+    if (!handler.getErrorMessage().empty()) {
         this->lastError = FS(_F("Save file error: {1}") % h.getErrorMessage());
         if (!control->getWindow()) {
             g_error("%s", this->lastError.c_str());
