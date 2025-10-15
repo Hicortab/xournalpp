@@ -59,6 +59,23 @@ auto StringUtils::endsWith(std::string_view str, std::string_view end) -> bool {
     return str.compare(str.length() - end.length(), end.length(), end) == 0;
 }
 
+std::string generateUniqueId() {
+    // 1. Timestamp in microsecondi
+    auto now = std::chrono::high_resolution_clock::now();
+    auto micros = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count();
+
+    // 2. Numero casuale robusto
+    std::random_device rd;
+    std::mt19937_64 gen(rd());
+    uint64_t random_num = gen();
+
+    // 3. Combina e formatta in esadecimale
+    std::stringstream ss;
+    ss << std::hex << micros << "-" << random_num;
+    
+    return ss.str();
+}
+
 const std::string TRIM_CHARS = "\t\n\v\f\r ";
 
 auto StringUtils::ltrim(std::string str) -> std::string {

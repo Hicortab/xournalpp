@@ -14,6 +14,10 @@
 #include <string>   // for string, basic_string
 #include <utility>  // for pair
 #include <vector>   // for vector
+#include <chrono>
+#include <random>
+#include <sstream>
+#include <iomanip>
 
 typedef std::pair<char, std::string> replace_pair;
 
@@ -29,6 +33,7 @@ public:
     static std::string trim(std::string str);
     static bool iequals(const std::string& a, const std::string& b);
     static bool isNumber(const std::string& input);
+    static std::string generateUniqueId();
 };
 
 inline auto char_cast(std::u8string_view str) -> std::string_view {

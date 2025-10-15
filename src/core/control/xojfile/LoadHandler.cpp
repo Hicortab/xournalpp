@@ -658,6 +658,8 @@ void LoadHandler::parseText() {
     this->text = textOwn.get();
     this->layer->addElement(std::move(textOwn));
 
+    this->page->markAsDirty();
+
     const char* sFont = LoadHandlerHelper::getAttrib("font", false, this);
     double fontSize = LoadHandlerHelper::getAttribDouble("size", this);
     double x = LoadHandlerHelper::getAttribDouble("x", this);

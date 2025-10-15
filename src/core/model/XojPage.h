@@ -44,6 +44,13 @@ public:
     // Also set the size over doc->setPageSize!
     void setBackgroundPdfPageNr(size_t page);
 
+    void setUid(const std::string& newUid);
+    const std::string& getUid();
+
+    void markAsDirty();
+    void markAsClean();
+    bool isDirty();
+
     void setBackgroundType(const PageType& bgType);
     PageType getBackgroundType() const;
 
@@ -90,6 +97,10 @@ private:
      * The Background image if any
      */
     BackgroundImage backgroundImage;
+
+    std::string uid;
+
+    bool dirty; // Flag per tracciare le modifiche
 
     /**
      * The size of the page

@@ -1055,6 +1055,8 @@ void TextEditor::finalizeEdition() {
         this->page->fireElementChanged(ptr);
         undo->addUndoAction(std::make_unique<InsertUndoAction>(page, layer, ptr));
     }
+
+    this->page.get()->markAsDirty();
 }
 
 void TextEditor::initializeEditionAt(double x, double y) {

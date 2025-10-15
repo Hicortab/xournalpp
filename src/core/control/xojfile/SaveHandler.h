@@ -19,7 +19,7 @@
 #include "model/BackgroundImage.h"  // for BackgroundImage
 #include "model/PageRef.h"          // for PageRef
 #include "util/Color.h"             // for Color
-
+#include "pugixml.h"
 #include "filesystem.h"  // for path
 
 class XmlPointNode;
@@ -40,6 +40,30 @@ public:
     void saveTo(const fs::path& filepath, ProgressListener* listener = nullptr);
     void saveTo(OutputStream* out, const fs::path& filepath, ProgressListener* listener = nullptr);
     const std::string& getErrorMessage();
+    bool save(Document* doc, const std::string& filepath);
+
+private:
+
+    /**
+     * @brief Esegue un salvataggio completo del documento, riscrivendo l'intero file.
+     * Da usare quando il file non esiste.
+     */
+    bool fullSave(Document* doc, const std::string& filepath);
+
+    /**
+     * @brief Esegue un salvataggio incrementale, modificando il file XML esistente.
+     * Aggiorna solo le pagine modificate.
+     */
+    bool incrementalSave(Document* doc, const std::string& filepath);
+
+    /**
+     * @brief Funzione helper per serializzare un singolo oggetto XojPage in un nodo pugi::xml_node.
+     * * @param doc Il documento pugi::xml_document a cui apparterrà il nodo (necessario per l'allocazione).
+     * @param page La pagina da serializzare.
+     * @return Il nodo XML che rappresenta la pagina.
+     */
+    pugi::xml_node serializePageToXmlNode(pugi::xml_document& doc, XojPage* page);
+
 
 protected:
     static std::string getColorStr(Color c, unsigned char alpha = 0xff);

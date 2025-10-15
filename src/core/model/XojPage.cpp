@@ -24,6 +24,21 @@ XojPage::~XojPage() {
     this->layer.clear();
 }
 
+void XojPage::setUid(const std::string& newUid) {
+    if (this->uid != newUid) {
+        this->uid = newUid;
+        markDirty();
+    }
+}
+
+const std::string& XojPage::getUid() const { return this->uid; }
+
+void XojPage::markDirty() { this->dirty = true; }
+
+void XojPage::clearDirtyFlag() { this->dirty = false; }
+
+bool XojPage::isDirty() const { return this->dirty; }
+
 XojPage::XojPage(XojPage const& page):
         backgroundImage(page.backgroundImage),
         width(page.width),
@@ -32,6 +47,10 @@ XojPage::XojPage(XojPage const& page):
         bgType(page.bgType),
         pdfBackgroundPage(page.pdfBackgroundPage),
         backgroundColor(page.backgroundColor) {
+
+    this->uid = generateUniqueId(); // Assegna un UID a ogni nuova pagina
+    this->dirty = true; // Le nuove pagine sono sempre "sporche"
+
     this->layer.reserve(page.layer.size());
     std::transform(begin(page.layer), end(page.layer), std::back_inserter(this->layer),
                    [](auto* layer) { return layer->clone(); });
